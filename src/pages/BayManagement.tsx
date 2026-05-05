@@ -36,7 +36,7 @@ export default function BayManagement() {
 
   const updateStatus = async (bayId: string, status: string) => {
     try {
-      await api.patch(`/admin/bays/${bayId}/status`, { status, reason });
+      await api.patch(`/admin/bays/${bayId}/status`, { status });
       toast.success(`Bay marked as ${status}`);
       qc.invalidateQueries({ queryKey: ["stations"] });
       setConfirmBay(null);

@@ -11,7 +11,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { Station } from "@/lib/types";
 
-const emptyForm = { name: "", address: "", city: "Lagos", latitude: 6.5244, longitude: 3.3792, pricePerKwh: 85, status: "ACTIVE" };
+const emptyForm = { name: "", address: "", latitude: 6.5244, longitude: 3.3792, pricingPerKwh: 85 };
 
 export default function Stations() {
   const { data: stations = [], isLoading } = useStations();
@@ -27,11 +27,9 @@ export default function Stations() {
     setForm({
       name: s.name,
       address: s.address || "",
-      city: s.city || "Lagos",
       latitude: s.latitude ?? 0,
       longitude: s.longitude ?? 0,
-      pricePerKwh: s.pricePerKwh ?? 85,
-      status: s.status || "ACTIVE",
+      pricingPerKwh: s.pricingPerKwh ?? 85,
     });
     setOpen(true);
   };
@@ -39,8 +37,15 @@ export default function Stations() {
   const submit = async () => {
     setSubmitting(true);
     try {
-      if (editing) await api.put(`/admin/stations/${editing.id}`, form);
-      else await api.post(`/admin/stations`, form);
+      const payload = {
+        name: form.name,
+        address: form.address,
+        latitude: Number(form.latitude),
+        longitude: Number(form.longitude),
+        pricingPerKwh: Number(form.pricingPerKwh),
+      };
+      if (editing) await api.put(`/admin/stations/${editing.id}`, payload);
+      else await api.post(`/admin/stations`, payload);
       toast.success(editing ? "Station updated" : "Station created");
       setOpen(false);
       qc.invalidateQueries({ queryKey: ["stations"] });
@@ -51,11 +56,11 @@ export default function Stations() {
     }
   };
 
-  const deactivate = async (s: Station) => {
-    if (!confirm(`Deactivate ${s.name}?`)) return;
+  const remove = async (s: Station) => {
+    if (!confirm(`Delete ${s.name}? This cannot be undone.`)) return;
     try {
-      await api.put(`/admin/stations/${s.id}`, { status: "INACTIVE" });
-      toast.success("Station deactivated");
+      await api.delete(`/admin/stations/${s.id}`);
+      toast.success("Station deleted");
       qc.invalidateQueries({ queryKey: ["stations"] });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed");
@@ -104,14 +109,14 @@ export default function Stations() {
                   <Stat n={off} label="Offline" color="text-destructive" />
                 </div>
                 <div className="mt-3 inline-block bg-primary/10 text-primary text-xs font-semibold px-2 py-1 rounded-full">
-                  ₦{s.pricePerKwh ?? 0}/kWh
+                  ₦{s.pricingPerKwh ?? 0}/kWh
                 </div>
                 <div className="flex gap-2 mt-4">
                   <Link to={`/stations/${s.id}/bays`} className="flex-1">
                     <Button variant="outline" size="sm" className="w-full">Manage Bays</Button>
                   </Link>
                   <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
-                  <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => deactivate(s)}>Deactivate</Button>
+                  <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => remove(s)}>Delete</Button>
                 </div>
               </div>
             );
@@ -125,20 +130,9 @@ export default function Stations() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Station Name" className="col-span-2"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
             <Field label="Address" className="col-span-2"><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
-            <Field label="City">
-              <select value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="w-full border border-border rounded-md px-3 h-10 bg-background text-sm">
-                {["Lagos", "Abuja", "Port Harcourt", "Kano", "Other"].map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </Field>
-            <Field label="Price per kWh (₦)"><Input type="number" value={form.pricePerKwh} onChange={(e) => setForm({ ...form, pricePerKwh: Number(e.target.value) })} /></Field>
+            <Field label="Price per kWh (₦)"><Input type="number" value={form.pricingPerKwh} onChange={(e) => setForm({ ...form, pricingPerKwh: Number(e.target.value) })} /></Field>
             <Field label="Latitude"><Input type="number" step="any" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })} /></Field>
             <Field label="Longitude"><Input type="number" step="any" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })} /></Field>
-            <Field label="Status">
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="w-full border border-border rounded-md px-3 h-10 bg-background text-sm">
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
-              </select>
-            </Field>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

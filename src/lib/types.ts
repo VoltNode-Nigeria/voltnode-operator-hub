@@ -18,7 +18,7 @@ export type Station = {
   city?: string;
   latitude?: number;
   longitude?: number;
-  pricePerKwh?: number;
+  pricingPerKwh?: number;
   status?: string;
   bays?: Bay[];
 };
