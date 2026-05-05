@@ -31,7 +31,8 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-navy px-4">
       <div className="w-full max-w-md bg-card rounded-xl shadow-xl p-8">
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 flex flex-col items-center">
+          <img src="/voltnode-icon.png" alt="VoltNode" width={64} height={64} className="h-16 w-16 mb-3" />
           <div className="text-2xl font-bold tracking-wide">
             <span className="text-navy">VOLT</span>
             <span className="text-primary">NODE</span>
