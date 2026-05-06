@@ -121,8 +121,9 @@ export default function BayManagement() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => updateStatus(b.id, "AVAILABLE")}>Available</Button>
-                  <Button size="sm" variant="outline" onClick={() => updateStatus(b.id, "MAINTENANCE")}>Maintenance</Button>
-                  <Button size="sm" variant="outline" className="text-destructive border-destructive/30" onClick={() => setConfirmBay(b)}>Mark Offline</Button>
+                  <Button size="sm" variant="outline" onClick={() => updateStatus(b.id, "OCCUPIED")}>Occupied</Button>
+                  <Button size="sm" variant="outline" className="text-destructive border-destructive/30" onClick={() => updateStatus(b.id, "FAULT")}>Fault</Button>
+                  <Button size="sm" variant="outline" onClick={() => setConfirmBay(b)}>Offline</Button>
                 </div>
               </div>
             );
