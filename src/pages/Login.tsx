@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Navigate } from "react-router-dom";
+import { useNavigate, Navigate, Link } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,11 @@ export default function Login() {
           </Button>
           {error && <div className="text-sm text-destructive text-center">{error}</div>}
         </form>
-        <p className="text-xs text-muted-foreground text-center mt-8">VoltNode · Operator Portal · Powered by HydroGEM Advisory</p>
+        <p className="text-sm text-center mt-6">
+          Don't have an account?{" "}
+          <Link to="/signup" className="text-primary font-semibold hover:underline">Create account</Link>
+        </p>
+        <p className="text-xs text-muted-foreground text-center mt-6">VoltNode · Operator Portal · Powered by HydroGEM Advisory</p>
       </div>
     </div>
   );
