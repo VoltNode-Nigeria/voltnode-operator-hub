@@ -56,6 +56,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const register = async (name: string, email: string, password: string) => {
+    setLoading(true);
+    try {
+      await api.post("/auth/register", { name, email, password, role: "OPERATOR" });
+      await login(email, password);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem("voltnode_token");
     localStorage.removeItem("voltnode_user");
