@@ -12,6 +12,7 @@ type AuthContextType = {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
 };
@@ -55,6 +56,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const register = async (name: string, email: string, password: string) => {
+    setLoading(true);
+    try {
+      await api.post("/auth/register", { name, email, password, role: "OPERATOR" });
+      await login(email, password);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem("voltnode_token");
     localStorage.removeItem("voltnode_user");
@@ -64,7 +75,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

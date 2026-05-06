@@ -4,12 +4,13 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, AlertTriangle } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import type { Bay } from "@/lib/types";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const borderColor: Record<string, string> = {
   AVAILABLE: "border-l-success",
@@ -33,6 +34,9 @@ export default function BayManagement() {
   const qc = useQueryClient();
   const [confirmBay, setConfirmBay] = useState<Bay | null>(null);
   const [reason, setReason] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [newBay, setNewBay] = useState({ label: "", chargerType: "AC_TYPE2" });
+  const [creating, setCreating] = useState(false);
 
   const updateStatus = async (bayId: string, status: string) => {
     try {
@@ -46,6 +50,29 @@ export default function BayManagement() {
     }
   };
 
+  const createBay = async () => {
+    if (!id) return;
+    if (!newBay.label.trim() || !newBay.chargerType.trim()) {
+      toast.error("Label and charger type are required");
+      return;
+    }
+    setCreating(true);
+    try {
+      await api.post(`/admin/stations/${id}/bays`, {
+        label: newBay.label.trim(),
+        chargerType: newBay.chargerType.trim(),
+      });
+      toast.success("Bay created");
+      setAddOpen(false);
+      setNewBay({ label: "", chargerType: "AC_TYPE2" });
+      qc.invalidateQueries({ queryKey: ["stations"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create bay");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (!station) return <div className="bg-card p-8 rounded-xl text-center">Station not found.</div>;
 
   return (
@@ -53,13 +80,20 @@ export default function BayManagement() {
       <Link to="/stations" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4 mr-1" /> Back to stations
       </Link>
-      <div>
-        <h2 className="text-xl font-bold text-navy">{station.name}</h2>
-        <p className="text-sm text-muted-foreground">{station.address}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-navy">{station.name}</h2>
+          <p className="text-sm text-muted-foreground">{station.address}</p>
+        </div>
+        <Button onClick={() => setAddOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90">
+          <Plus className="h-4 w-4 mr-2" /> Add Bay
+        </Button>
       </div>
 
       {(station.bays || []).length === 0 ? (
-        <div className="bg-card p-8 rounded-xl text-center text-muted-foreground border border-border">No bays configured.</div>
+        <div className="bg-card p-8 rounded-xl text-center text-muted-foreground border border-border">
+          No bays configured. Click "Add Bay" to create the first one.
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {(station.bays || []).map((b) => {
@@ -104,6 +138,28 @@ export default function BayManagement() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmBay(null)}>Cancel</Button>
             <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => confirmBay && updateStatus(confirmBay.id, "OFFLINE")}>Confirm</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add New Bay</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Bay Label</Label>
+              <Input className="mt-1" placeholder="e.g. Bay A1" value={newBay.label} onChange={(e) => setNewBay({ ...newBay, label: e.target.value })} />
+            </div>
+            <div>
+              <Label className="text-xs">Charger Type</Label>
+              <Input className="mt-1" placeholder="e.g. AC_TYPE2, DC_CCS, DC_CHADEMO" value={newBay.chargerType} onChange={(e) => setNewBay({ ...newBay, chargerType: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={createBay} disabled={creating} className="bg-primary text-primary-foreground hover:bg-primary/90">
+              {creating ? "Creating…" : "Create Bay"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
