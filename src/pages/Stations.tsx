@@ -21,8 +21,10 @@ export default function Stations() {
   const [form, setForm] = useState<any>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [imagesFor, setImagesFor] = useState<Station | null>(null);
+  const [pendingImages, setPendingImages] = useState<File[]>([]);
+  const newFileRef = useRef<HTMLInputElement>(null);
 
-  const openNew = () => { setEditing(null); setForm(emptyForm); setOpen(true); };
+  const openNew = () => { setEditing(null); setForm(emptyForm); setPendingImages([]); setOpen(true); };
   const openEdit = (s: Station) => {
     setEditing(s);
     setForm({
@@ -32,6 +34,7 @@ export default function Stations() {
       longitude: s.longitude ?? 0,
       pricingPerKwh: s.pricingPerKwh ?? 85,
     });
+    setPendingImages([]);
     setOpen(true);
   };
 
@@ -45,10 +48,21 @@ export default function Stations() {
         longitude: Number(form.longitude),
         pricingPerKwh: Number(form.pricingPerKwh),
       };
-      if (editing) await api.put(`/admin/stations/${editing.id}`, payload);
-      else await api.post(`/admin/stations`, payload);
+      let stationId = editing?.id;
+      if (editing) {
+        await api.put(`/admin/stations/${editing.id}`, payload);
+      } else {
+        const res = await api.post(`/admin/stations`, payload);
+        stationId = res.data?.id || res.data?.station?.id;
+      }
+      if (stationId && pendingImages.length > 0) {
+        for (const f of pendingImages) {
+          await uploadImage(stationId, f);
+        }
+      }
       toast.success(editing ? "Station updated" : "Station created");
       setOpen(false);
+      setPendingImages([]);
       qc.invalidateQueries({ queryKey: ["stations"] });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to save station");
@@ -70,7 +84,7 @@ export default function Stations() {
 
   const uploadImage = async (stationId: string, file: File) => {
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("image", file);
     try {
       await api.post(`/admin/stations/${stationId}/images`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -175,6 +189,43 @@ export default function Stations() {
             <Field label="Price per kWh (₦)"><Input type="number" value={form.pricingPerKwh} onChange={(e) => setForm({ ...form, pricingPerKwh: Number(e.target.value) })} /></Field>
             <Field label="Latitude"><Input type="number" step="any" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })} /></Field>
             <Field label="Longitude"><Input type="number" step="any" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })} /></Field>
+            <div className="col-span-2">
+              <Label className="text-xs">Images</Label>
+              <input
+                ref={newFileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = e.target.files ? Array.from(e.target.files) : [];
+                  setPendingImages((prev) => [...prev, ...files]);
+                  if (newFileRef.current) newFileRef.current.value = "";
+                }}
+              />
+              <Button type="button" variant="outline" size="sm" className="mt-1 w-full" onClick={() => newFileRef.current?.click()}>
+                <ImagePlus className="h-4 w-4 mr-2" /> Add Image(s)
+              </Button>
+              {pendingImages.length > 0 && (
+                <div className="mt-2 grid grid-cols-4 gap-2">
+                  {pendingImages.map((f, i) => (
+                    <div key={i} className="relative group">
+                      <img src={URL.createObjectURL(f)} alt="" className="w-full h-16 object-cover rounded border border-border" />
+                      <button
+                        type="button"
+                        onClick={() => setPendingImages((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="absolute top-0.5 right-0.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!editing && (
+                <p className="text-[10px] text-muted-foreground mt-1">Images will upload after the station is created.</p>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
