@@ -21,8 +21,10 @@ export default function Stations() {
   const [form, setForm] = useState<any>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [imagesFor, setImagesFor] = useState<Station | null>(null);
+  const [pendingImages, setPendingImages] = useState<File[]>([]);
+  const newFileRef = useRef<HTMLInputElement>(null);
 
-  const openNew = () => { setEditing(null); setForm(emptyForm); setOpen(true); };
+  const openNew = () => { setEditing(null); setForm(emptyForm); setPendingImages([]); setOpen(true); };
   const openEdit = (s: Station) => {
     setEditing(s);
     setForm({
@@ -32,6 +34,7 @@ export default function Stations() {
       longitude: s.longitude ?? 0,
       pricingPerKwh: s.pricingPerKwh ?? 85,
     });
+    setPendingImages([]);
     setOpen(true);
   };
 
@@ -45,10 +48,21 @@ export default function Stations() {
         longitude: Number(form.longitude),
         pricingPerKwh: Number(form.pricingPerKwh),
       };
-      if (editing) await api.put(`/admin/stations/${editing.id}`, payload);
-      else await api.post(`/admin/stations`, payload);
+      let stationId = editing?.id;
+      if (editing) {
+        await api.put(`/admin/stations/${editing.id}`, payload);
+      } else {
+        const res = await api.post(`/admin/stations`, payload);
+        stationId = res.data?.id || res.data?.station?.id;
+      }
+      if (stationId && pendingImages.length > 0) {
+        for (const f of pendingImages) {
+          await uploadImage(stationId, f);
+        }
+      }
       toast.success(editing ? "Station updated" : "Station created");
       setOpen(false);
+      setPendingImages([]);
       qc.invalidateQueries({ queryKey: ["stations"] });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to save station");
