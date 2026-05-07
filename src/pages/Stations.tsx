@@ -70,7 +70,7 @@ export default function Stations() {
 
   const uploadImage = async (stationId: string, file: File) => {
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("image", file);
     try {
       await api.post(`/admin/stations/${stationId}/images`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
