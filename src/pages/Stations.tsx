@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useStations } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { MapPin, Plus } from "lucide-react";
+import { ImagePlus, MapPin, Plus, Trash2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { Station } from "@/lib/types";
@@ -20,6 +20,7 @@ export default function Stations() {
   const [editing, setEditing] = useState<Station | null>(null);
   const [form, setForm] = useState<any>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+  const [imagesFor, setImagesFor] = useState<Station | null>(null);
 
   const openNew = () => { setEditing(null); setForm(emptyForm); setOpen(true); };
   const openEdit = (s: Station) => {
@@ -67,6 +68,30 @@ export default function Stations() {
     }
   };
 
+  const uploadImage = async (stationId: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      await api.post(`/admin/stations/${stationId}/images`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("Image uploaded");
+      qc.invalidateQueries({ queryKey: ["stations"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Upload failed");
+    }
+  };
+
+  const deleteImage = async (imageId: string) => {
+    try {
+      await api.delete(`/admin/images/${imageId}`);
+      toast.success("Image deleted");
+      qc.invalidateQueries({ queryKey: ["stations"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Delete failed");
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -102,6 +127,13 @@ export default function Stations() {
                     {s.status || "ACTIVE"}
                   </span>
                 </div>
+                {s.images && s.images.length > 0 && (
+                  <div className="mt-3 flex gap-2 overflow-x-auto">
+                    {s.images.slice(0, 4).map((img) => (
+                      <img key={img.id} src={img.url} alt={s.name} className="h-16 w-16 object-cover rounded-md border border-border" />
+                    ))}
+                  </div>
+                )}
                 <div className="grid grid-cols-4 gap-2 mt-4 text-center">
                   <Stat n={bays.length} label="Total" />
                   <Stat n={avail} label="Available" color="text-success" />
@@ -115,6 +147,9 @@ export default function Stations() {
                   <Link to={`/stations/${s.id}/bays`} className="flex-1">
                     <Button variant="outline" size="sm" className="w-full">Manage Bays</Button>
                   </Link>
+                  <Button variant="outline" size="sm" onClick={() => setImagesFor(s)}>
+                    <ImagePlus className="h-4 w-4" />
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
                   <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => remove(s)}>Delete</Button>
                 </div>
@@ -123,6 +158,13 @@ export default function Stations() {
           })}
         </div>
       )}
+
+      <ImagesDialog
+        station={imagesFor}
+        onClose={() => setImagesFor(null)}
+        onUpload={uploadImage}
+        onDelete={deleteImage}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
