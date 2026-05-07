@@ -201,3 +201,82 @@ const Field = ({ label, children, className = "" }: any) => (
     <div className="mt-1">{children}</div>
   </div>
 );
+
+function ImagesDialog({
+  station,
+  onClose,
+  onUpload,
+  onDelete,
+}: {
+  station: Station | null;
+  onClose: () => void;
+  onUpload: (stationId: string, file: File) => Promise<void>;
+  onDelete: (imageId: string) => Promise<void>;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || !station) return;
+    setBusy(true);
+    for (const f of Array.from(files)) {
+      await onUpload(station.id, f);
+    }
+    setBusy(false);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  return (
+    <Dialog open={!!station} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Images — {station?.name}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => handleFiles(e.target.files)}
+              className="hidden"
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+              className="w-full"
+            >
+              <ImagePlus className="h-4 w-4 mr-2" />
+              {busy ? "Uploading…" : "Upload Image(s)"}
+            </Button>
+          </div>
+          {station?.images && station.images.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {station.images.map((img) => (
+                <div key={img.id} className="relative group">
+                  <img src={img.url} alt="" className="w-full h-24 object-cover rounded-md border border-border" />
+                  <button
+                    onClick={() => onDelete(img.id)}
+                    className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition"
+                    aria-label="Delete image"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6">No images yet.</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            <X className="h-4 w-4 mr-2" /> Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
