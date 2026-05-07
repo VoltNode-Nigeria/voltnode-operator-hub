@@ -11,6 +11,11 @@ export type Bay = {
   updatedAt?: string;
 };
 
+export type StationImage = {
+  id: string;
+  url: string;
+};
+
 export type Station = {
   id: string;
   name: string;
@@ -21,6 +26,7 @@ export type Station = {
   pricingPerKwh?: number;
   status?: string;
   bays?: Bay[];
+  images?: StationImage[];
 };
 
 export type Session = {
