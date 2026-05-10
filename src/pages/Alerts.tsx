@@ -1,26 +1,27 @@
-import { useMemo, useState } from "react";
-import { useStations } from "@/lib/hooks";
+import { useDashboardSummary } from "@/lib/hooks";
+import { api } from "@/lib/api";
 import { CheckCircle2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 export default function Alerts() {
-  const { data: stations = [] } = useStations();
-  const [resolved, setResolved] = useState<Set<string>>(new Set());
+  const { data: summary } = useDashboardSummary("today", undefined, 30000);
+  const qc = useQueryClient();
+  const active = summary?.faultAlerts || [];
 
-  const active = useMemo(() => {
-    const list: any[] = [];
-    for (const st of stations) {
-      for (const b of st.bays || []) {
-        const s = (b.status || "").toUpperCase();
-        if ((s === "FAULT" || s === "OFFLINE") && !resolved.has(b.id)) {
-          list.push({ bay: b, station: st, type: s });
-        }
-      }
+  const resolve = async (bayId: string) => {
+    try {
+      await api.patch(`/admin/bays/${bayId}/status`, { status: "AVAILABLE" });
+      toast.success("Bay marked available");
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["stations"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to resolve");
     }
-    return list;
-  }, [stations, resolved]);
+  };
 
   return (
     <div className="space-y-6">
@@ -34,19 +35,19 @@ export default function Alerts() {
           </div>
         ) : (
           <div className="space-y-3">
-            {active.map(({ bay, station, type }) => (
-              <div key={bay.id} className={`bg-card rounded-xl border border-border border-l-4 ${type === "FAULT" ? "border-l-destructive" : "border-l-muted-foreground"} p-5 flex items-center justify-between`}>
+            {active.map((a) => (
+              <div key={a.bayId} className={`bg-card rounded-xl border border-border border-l-4 ${a.status === "FAULT" ? "border-l-destructive" : "border-l-muted-foreground"} p-5 flex items-center justify-between`}>
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className={`h-5 w-5 mt-0.5 ${type === "FAULT" ? "text-destructive" : "text-muted-foreground"}`} />
+                  <AlertTriangle className={`h-5 w-5 mt-0.5 ${a.status === "FAULT" ? "text-destructive" : "text-muted-foreground"}`} />
                   <div>
-                    <div className="font-semibold text-navy">{bay.label || bay.name} · {station.name}</div>
-                    <span className={`text-xs font-semibold mt-1 inline-block px-2 py-0.5 rounded-full ${type === "FAULT" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>BAY {type}</span>
-                    <div className="text-xs text-muted-foreground mt-1">Last seen: {bay.lastSeenAt ? format(new Date(bay.lastSeenAt), "PPp") : "—"}</div>
+                    <div className="font-semibold text-navy">{a.bayLabel} · {a.stationName}</div>
+                    <span className={`text-xs font-semibold mt-1 inline-block px-2 py-0.5 rounded-full ${a.status === "FAULT" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>BAY {a.status}</span>
+                    <div className="text-xs text-muted-foreground mt-1">Last seen: {a.lastSeen ? format(new Date(a.lastSeen), "PPp") : "—"}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link to={`/stations/${station.id}/bays`} className="text-sm text-primary font-medium hover:underline">View Station</Link>
-                  <Button variant="outline" size="sm" className="text-destructive border-destructive/30" onClick={() => setResolved((s) => new Set([...s, bay.id]))}>Mark as Resolved</Button>
+                  <Link to={`/stations/${a.stationId}/bays`} className="text-sm text-primary font-medium hover:underline">View Station</Link>
+                  <Button variant="outline" size="sm" className="text-destructive border-destructive/30" onClick={() => resolve(a.bayId)}>Mark as Resolved</Button>
                 </div>
               </div>
             ))}
