@@ -1,55 +1,45 @@
 import { useMemo, useState } from "react";
-import { useSessions, useStations } from "@/lib/hooks";
-import { sessionCost, sessionKwh } from "@/lib/sessions";
+import { useDashboardSummary, useGlobalRate, useStations } from "@/lib/hooks";
 import { formatNaira } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { startOfDay, startOfWeek, startOfMonth, isAfter, subDays, format } from "date-fns";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 type Period = "today" | "week" | "month";
 
 export default function Revenue() {
-  const { data: sessions = [] } = useSessions();
-  const { data: stations = [] } = useStations();
   const [period, setPeriod] = useState<Period>("today");
+  const { data: summary } = useDashboardSummary(period);
+  const { data: stations = [] } = useStations();
+  const { data: globalRate } = useGlobalRate();
 
-  const cutoff = useMemo(() => {
-    const now = new Date();
-    if (period === "today") return startOfDay(now);
-    if (period === "week") return startOfWeek(now);
-    return startOfMonth(now);
-  }, [period]);
+  const totalRevenue = summary?.revenue.totalNaira ?? 0;
+  const totalKwh = summary?.revenue.totalKwh ?? 0;
+  const totalSessions = summary?.revenue.totalSessions ?? 0;
+  const avg = summary?.revenue.avgSessionValue ?? 0;
+  const walletSessions = summary?.revenue.walletSessions ?? 0;
+  const cardSessions = summary?.revenue.cardSessions ?? 0;
 
-  const filtered = useMemo(
-    () => sessions.filter((s) => s.startedAt && isAfter(new Date(s.startedAt), cutoff)),
-    [sessions, cutoff]
-  );
+  const byStation = (summary?.revenueByStation || []).map((s) => ({
+    id: s.stationId,
+    name: s.stationName,
+    sessions: s.sessions,
+    kwh: s.kwhDispensed,
+    revenue: s.revenue,
+    avg: s.avgSessionValue,
+    pct: s.percentOfTotal,
+  }));
 
-  const totalRevenue = filtered.reduce((sum, s) => sum + sessionCost(s), 0);
-  const totalKwh = filtered.reduce((sum, s) => sum + sessionKwh(s), 0);
-  const avg = filtered.length ? totalRevenue / filtered.length : 0;
-  const paid = filtered.filter((s) => (s.paymentStatus || "").toUpperCase() === "PAID").length;
-  const failed = filtered.filter((s) => (s.paymentStatus || "").toUpperCase() === "FAILED").length;
-  const pending = filtered.filter((s) => !s.paymentStatus || s.paymentStatus.toUpperCase() === "PENDING").length;
+  const chartData = summary?.chartData || [];
 
-  const byStation = stations.map((st) => {
-    const ss = filtered.filter((s) => (s.stationId || s.station?.id) === st.id);
-    const rev = ss.reduce((sum, s) => sum + sessionCost(s), 0);
-    return {
-      id: st.id, name: st.name, sessions: ss.length,
-      kwh: ss.reduce((sum, s) => sum + sessionKwh(s), 0),
-      revenue: rev, avg: ss.length ? rev / ss.length : 0,
-      pct: totalRevenue ? (rev / totalRevenue) * 100 : 0,
-    };
-  });
-
-  const chartData = useMemo(() => {
-    const days = Array.from({ length: 7 }, (_, i) => startOfDay(subDays(new Date(), 6 - i)));
-    return days.map((d) => ({
-      day: format(d, "EEE"),
-      sessions: sessions.filter((s) => s.startedAt && startOfDay(new Date(s.startedAt)).getTime() === d.getTime()).length,
-    }));
-  }, [sessions]);
+  const gRate = globalRate?.ratePerKwh ?? 0;
+  const stationRates = stations.map((s) => Number(s.pricingPerKwh ?? 0)).filter((n) => n > 0);
+  const highest = stationRates.length ? Math.max(...stationRates) : 0;
+  const lowest = stationRates.length ? Math.min(...stationRates) : 0;
+  const highestStation = stations.find((s) => Number(s.pricingPerKwh) === highest)?.name || "—";
+  const lowestStation = stations.find((s) => Number(s.pricingPerKwh) === lowest)?.name || "—";
+  const yourAvg = stationRates.length ? stationRates.reduce((a, b) => a + b, 0) / stationRates.length : 0;
+  const estAtGlobal = totalKwh * gRate;
+  const diff = totalRevenue - estAtGlobal;
 
   return (
     <div className="space-y-6">
@@ -63,9 +53,18 @@ export default function Revenue() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <RevCard label="Total Revenue" value={formatNaira(totalRevenue)} color="text-primary" />
-        <RevCard label="Total Sessions" value={filtered.length} color="text-navy" />
+        <RevCard label="Total Sessions" value={totalSessions} color="text-navy" />
         <RevCard label="kWh Dispensed" value={`${totalKwh.toFixed(2)} kWh`} color="text-foreground" />
         <RevCard label="Avg. Session Value" value={formatNaira(avg)} color="text-foreground" />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-success/15 text-success">
+          Wallet Sessions: {walletSessions}
+        </span>
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-primary/15 text-primary">
+          Card Sessions: {cardSessions}
+        </span>
       </div>
       <div className="bg-card border border-border rounded-xl">
         <div className="px-5 py-4 border-b border-border font-semibold text-navy">Revenue by Station</div>
@@ -95,11 +94,35 @@ export default function Revenue() {
           </table>
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <RevCard label="Successful Payments" value={paid} color="text-success" />
-        <RevCard label="Failed Payments" value={failed} color="text-destructive" />
-        <RevCard label="Pending" value={pending} color="text-warning" />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+          <h3 className="font-semibold text-navy mb-3">Rate Summary</h3>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-muted-foreground">Global Rate</span><span className="text-navy font-semibold tabular">{formatNaira(gRate)}/kWh</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Highest Rate</span><span className="text-navy font-semibold tabular">{formatNaira(highest)}/kWh <span className="text-muted-foreground font-normal">({highestStation})</span></span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Lowest Rate</span><span className="text-navy font-semibold tabular">{formatNaira(lowest)}/kWh <span className="text-muted-foreground font-normal">({lowestStation})</span></span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Your Average</span><span className="text-navy font-semibold tabular">{formatNaira(yourAvg)}/kWh</span></div>
+          </div>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+          <h3 className="font-semibold text-navy mb-3">Revenue at Global Rate</h3>
+          <div className="text-xs text-muted-foreground">Estimated at global rate:</div>
+          <div className="text-2xl font-bold text-navy tabular">{formatNaira(estAtGlobal)}</div>
+          <div className="text-xs text-muted-foreground mt-3">Actual earned:</div>
+          <div className="text-2xl font-bold text-primary tabular">{formatNaira(totalRevenue)}</div>
+          <div className="mt-3 text-sm">
+            {Math.abs(diff) < 0.01 ? (
+              <span className="text-muted-foreground">Matches global rate exactly</span>
+            ) : diff > 0 ? (
+              <span className="text-success font-medium">{formatNaira(diff)} more than global rate</span>
+            ) : (
+              <span className="text-warning font-medium">{formatNaira(Math.abs(diff))} less than global rate</span>
+            )}
+          </div>
+        </div>
       </div>
+
       <div className="bg-card border border-border rounded-xl p-5">
         <h3 className="font-semibold text-navy mb-4">Sessions This Week</h3>
         <div className="h-64">
