@@ -1,20 +1,25 @@
 import { useRef, useState } from "react";
-import { useStations } from "@/lib/hooks";
+import { useStations, useGlobalRate } from "@/lib/hooks";
 import { api } from "@/lib/api";
+import { formatNaira } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, MapPin, Plus, Trash2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { Station } from "@/lib/types";
+import { VarianceBadge, computeVariance } from "@/components/VarianceBadge";
 
 const emptyForm = { name: "", address: "", latitude: 6.5244, longitude: 3.3792, pricingPerKwh: 85 };
 
 export default function Stations() {
   const { data: stations = [], isLoading } = useStations();
+  const { data: globalRate } = useGlobalRate();
+  const gRate = globalRate?.ratePerKwh ?? 0;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Station | null>(null);
@@ -23,6 +28,7 @@ export default function Stations() {
   const [imagesFor, setImagesFor] = useState<Station | null>(null);
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const newFileRef = useRef<HTMLInputElement>(null);
+  const [resetTarget, setResetTarget] = useState<Station | null>(null);
 
   const openNew = () => { setEditing(null); setForm(emptyForm); setPendingImages([]); setOpen(true); };
   const openEdit = (s: Station) => {
@@ -106,6 +112,18 @@ export default function Stations() {
     }
   };
 
+  const resetToGlobal = async (s: Station) => {
+    try {
+      await api.put(`/admin/stations/${s.id}`, { pricingPerKwh: gRate });
+      toast.success("Pricing reset to global rate");
+      qc.invalidateQueries({ queryKey: ["stations"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to reset");
+    } finally {
+      setResetTarget(null);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -157,6 +175,16 @@ export default function Stations() {
                 <div className="mt-3 inline-block bg-primary/10 text-primary text-xs font-semibold px-2 py-1 rounded-full">
                   ₦{s.pricingPerKwh ?? 0}/kWh
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">Global: <span className="text-foreground">{formatNaira(gRate)}/kWh</span></span>
+                  <span className="text-navy font-semibold">Yours: {formatNaira(s.pricingPerKwh)}/kWh</span>
+                  <VarianceBadge stationRate={s.pricingPerKwh} globalRate={gRate} />
+                  {Math.abs(computeVariance(s.pricingPerKwh, gRate)) > 0.05 && gRate > 0 && (
+                    <Button variant="outline" size="sm" className="h-7 text-xs border-primary/40 text-primary hover:bg-primary/10 ml-auto" onClick={() => setResetTarget(s)}>
+                      Reset to Global
+                    </Button>
+                  )}
+                </div>
                 <div className="flex gap-2 mt-4">
                   <Link to={`/stations/${s.id}/bays`} className="flex-1">
                     <Button variant="outline" size="sm" className="w-full">Manage Bays</Button>
@@ -186,7 +214,17 @@ export default function Stations() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Station Name" className="col-span-2"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
             <Field label="Address" className="col-span-2"><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
-            <Field label="Price per kWh (₦)"><Input type="number" value={form.pricingPerKwh} onChange={(e) => setForm({ ...form, pricingPerKwh: Number(e.target.value) })} /></Field>
+            <div className="col-span-2">
+              <Label className="text-xs">Price per kWh (₦)</Label>
+              <div className="mt-1"><Input type="number" value={form.pricingPerKwh} onChange={(e) => setForm({ ...form, pricingPerKwh: Number(e.target.value) })} /></div>
+              <div className="mt-1 flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Global baseline rate: {formatNaira(gRate)}/kWh</span>
+                <button type="button" className="text-primary hover:underline" onClick={() => setForm({ ...form, pricingPerKwh: gRate })}>
+                  Use global rate
+                </button>
+              </div>
+              <PricingHint rate={Number(form.pricingPerKwh)} globalRate={gRate} />
+            </div>
             <Field label="Latitude"><Input type="number" step="any" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })} /></Field>
             <Field label="Longitude"><Input type="number" step="any" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })} /></Field>
             <div className="col-span-2">
@@ -235,6 +273,21 @@ export default function Stations() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!resetTarget} onOpenChange={(o) => !o && setResetTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset pricing to global rate?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Reset pricing to global rate of {formatNaira(gRate)}/kWh? This will replace your current rate of {formatNaira(resetTarget?.pricingPerKwh)}/kWh.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => resetTarget && resetToGlobal(resetTarget)}>Confirm</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -252,6 +305,19 @@ const Field = ({ label, children, className = "" }: any) => (
     <div className="mt-1">{children}</div>
   </div>
 );
+
+function PricingHint({ rate, globalRate }: { rate: number; globalRate: number }) {
+  if (!globalRate) return null;
+  const diff = rate - globalRate;
+  const pct = (diff / globalRate) * 100;
+  if (Math.abs(pct) < 0.05) {
+    return <p className="text-[11px] text-muted-foreground mt-1">Matches global rate</p>;
+  }
+  if (diff > 0) {
+    return <p className="text-[11px] text-success mt-1">Your rate is {formatNaira(diff)} ({pct.toFixed(1)}%) above the global rate</p>;
+  }
+  return <p className="text-[11px] text-warning mt-1">Your rate is {formatNaira(Math.abs(diff))} ({Math.abs(pct).toFixed(1)}%) below the global rate</p>;
+}
 
 function ImagesDialog({
   station,
