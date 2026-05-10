@@ -1,7 +1,7 @@
 import { useMemo, useState, Fragment } from "react";
 import { useSessions, useStations } from "@/lib/hooks";
 import { isCompleted, sessionCost, sessionKwh, sessionStation, sessionDriver } from "@/lib/sessions";
-import { formatNaira, maskDriver, API_BASE } from "@/lib/api";
+import { api, formatNaira, maskDriver } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,14 +39,15 @@ export default function SessionHistory() {
     if (stationId !== "ALL") params.set("stationId", stationId);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
-    const token = localStorage.getItem("voltnode_token");
-    const res = await fetch(`${API_BASE}/dashboard/export?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-    const b = await res.blob();
-    const url = URL.createObjectURL(b);
+    const res = await api.get(`/dashboard/export?${params}`, { responseType: "blob" });
+    const url = URL.createObjectURL(new Blob([res.data]));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `voltnode-sessions-${Date.now()}.csv`;
+    const fname = from && to ? `voltnode-sessions-${from}-to-${to}.csv` : `voltnode-sessions-${Date.now()}.csv`;
+    a.setAttribute("download", fname);
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(url);
   };
 
