@@ -1,7 +1,7 @@
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Zap } from "lucide-react";
-import { useSessions, useStations } from "@/lib/hooks";
-import { isActive, sessionCost, sessionKwh, sessionStation, sessionDriver } from "@/lib/sessions";
+import { useDashboardSummary, useStations } from "@/lib/hooks";
+import { sessionCost, sessionKwh, sessionStation, sessionDriver } from "@/lib/sessions";
 import { formatNaira, maskDriver } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { format } from "date-fns";
@@ -34,16 +34,18 @@ const fmtDuration = (start?: string) => {
 
 export default function LiveSessions() {
   useTick(1000);
-  const { data: sessions = [], isLoading } = useSessions(15000);
   const { data: stations = [] } = useStations();
+  const [period, setPeriod] = useState<"today" | "week" | "month">("today");
   const [stationFilter, setStationFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selected, setSelected] = useState<any>(null);
-
-  const active = useMemo(() => sessions.filter(isActive), [sessions]);
-
+  const { data: summary, isLoading } = useDashboardSummary(
+    period,
+    stationFilter === "ALL" ? undefined : stationFilter,
+    15000,
+  );
+  const active = summary?.activeSessions || [];
   const filtered = active.filter((s) => {
-    if (stationFilter !== "ALL" && (s.stationId || s.station?.id) !== stationFilter) return false;
     if (statusFilter !== "ALL" && (s.status || "").toUpperCase() !== statusFilter) return false;
     return true;
   });
@@ -72,6 +74,20 @@ export default function LiveSessions() {
               )}
             >
               {s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1 ml-2">
+          {(["today", "week", "month"] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-medium",
+                period === p ? "bg-primary text-primary-foreground" : "bg-card border border-border text-muted-foreground",
+              )}
+            >
+              {p === "today" ? "Today" : p === "week" ? "This Week" : "This Month"}
             </button>
           ))}
         </div>

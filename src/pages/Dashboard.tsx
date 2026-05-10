@@ -1,12 +1,15 @@
-import { useMemo, useState, useEffect } from "react";
+import { useState } from "react";
 import { Zap, Grid3x3, CheckCircle2, AlertTriangle, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { useSessions, useStations } from "@/lib/hooks";
-import { formatNaira, maskDriver } from "@/lib/api";
-import { isActive, sessionKwh, sessionCost, sessionStation, sessionDriver } from "@/lib/sessions";
+import { useDashboardSummary, useGlobalRate, useStations } from "@/lib/hooks";
+import { api, formatNaira, maskDriver } from "@/lib/api";
+import { sessionKwh, sessionCost, sessionStation, sessionDriver } from "@/lib/sessions";
 import { StatusBadge } from "@/components/StatusBadge";
-import { format, isToday, subDays, startOfDay } from "date-fns";
+import { VarianceBadge, computeVariance } from "@/components/VarianceBadge";
+import { format } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 function StatCard({ icon: Icon, label, value, sub, accent = "primary" }: any) {
   const accents: Record<string, string> = {
@@ -32,35 +35,38 @@ function StatCard({ icon: Icon, label, value, sub, accent = "primary" }: any) {
 }
 
 export default function Dashboard() {
-  const { data: sessions = [], isLoading: sLoad } = useSessions(15000);
+  const { data: summary, isLoading: sLoad } = useDashboardSummary("today", undefined, 15000);
   const { data: stations = [] } = useStations();
+  const { data: globalRate } = useGlobalRate();
+  const qc = useQueryClient();
   const [dismissed, setDismissed] = useState(false);
 
-  const active = useMemo(() => sessions.filter(isActive), [sessions]);
-  const allBays = useMemo(() => stations.flatMap((s) => s.bays || []), [stations]);
-  const availableBays = allBays.filter((b) => (b.status || "").toUpperCase() === "AVAILABLE").length;
-  const todaysRevenue = sessions
-    .filter((s) => s.startedAt && isToday(new Date(s.startedAt)))
-    .reduce((sum, s) => sum + sessionCost(s), 0);
+  const active = summary?.activeSessions || [];
+  const overview = summary?.overview;
+  const todaysRevenue = summary?.revenue.totalNaira ?? 0;
+  const faultAlerts = summary?.faultAlerts || [];
+  const firstFault = faultAlerts[0];
+  const chartData = summary?.chartData || [];
+  const gRate = globalRate?.ratePerKwh ?? 0;
 
-  const faultyBay = allBays.find((b) => ["FAULT", "OFFLINE"].includes((b.status || "").toUpperCase()));
-  const faultStation = stations.find((s) => s.bays?.some((b) => b.id === faultyBay?.id));
-
-  const chartData = useMemo(() => {
-    const days = Array.from({ length: 7 }, (_, i) => startOfDay(subDays(new Date(), 6 - i)));
-    return days.map((d) => ({
-      day: format(d, "EEE"),
-      sessions: sessions.filter((s) => s.startedAt && startOfDay(new Date(s.startedAt)).getTime() === d.getTime()).length,
-    }));
-  }, [sessions]);
+  const resetToGlobal = async (stationId: string) => {
+    if (!gRate) return;
+    try {
+      await api.put(`/admin/stations/${stationId}`, { pricingPerKwh: gRate });
+      toast.success("Pricing reset to global rate");
+      qc.invalidateQueries({ queryKey: ["stations"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to reset pricing");
+    }
+  };
 
   return (
     <div className="space-y-6">
-      {faultyBay && !dismissed && (
+      {firstFault && !dismissed && (
         <div className="bg-destructive/10 border border-destructive/30 text-destructive rounded-xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-medium">
             <AlertTriangle className="h-4 w-4" />
-            Alert: Bay {faultyBay.label || faultyBay.name} at {faultStation?.name || "station"} is {(faultyBay.status || "").toUpperCase()} —
+            Alert: Bay {firstFault.bayLabel} at {firstFault.stationName} is {(firstFault.status || "").toUpperCase()} —
             <Link to="/alerts" className="underline ml-1">View</Link>
           </div>
           <button onClick={() => setDismissed(true)}><X className="h-4 w-4" /></button>
@@ -68,10 +74,57 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Zap} label="Active Sessions" value={active.length} sub="Right Now" accent="primary" />
-        <StatCard icon={Grid3x3} label="Total Bays" value={allBays.length} sub="Across all stations" accent="navy" />
-        <StatCard icon={CheckCircle2} label="Available Bays" value={availableBays} sub="Ready to charge" accent="success" />
+        <StatCard icon={Zap} label="Active Sessions" value={overview?.activeSessionsCount ?? 0} sub="Right Now" accent="primary" />
+        <StatCard icon={Grid3x3} label="Total Bays" value={overview?.totalBays ?? 0} sub="Across all stations" accent="navy" />
+        <StatCard icon={CheckCircle2} label="Available Bays" value={overview?.availableBays ?? 0} sub="Ready to charge" accent="success" />
         <StatCard icon={Zap} label="Today's Revenue" value={formatNaira(todaysRevenue)} sub="So far today" accent="primary" />
+      </div>
+
+      <div className="bg-card rounded-xl shadow-sm border border-border p-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Global Baseline Rate</div>
+            <div className="mt-2 text-[28px] font-bold text-navy tabular">{formatNaira(gRate)} <span className="text-base font-medium text-muted-foreground">/ kWh</span></div>
+            <div className="mt-1 text-[11px] italic text-muted-foreground">Set by VoltNode Admin · Not editable here</div>
+          </div>
+          <div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="text-left py-2">Station</th>
+                    <th className="text-right py-2">Your Rate</th>
+                    <th className="text-left py-2 pl-4">vs Global</th>
+                    <th className="text-right py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stations.length === 0 && (
+                    <tr><td colSpan={4} className="py-3 text-center text-muted-foreground">No stations.</td></tr>
+                  )}
+                  {stations.map((st) => {
+                    const v = computeVariance(st.pricingPerKwh, gRate);
+                    const matches = Math.abs(v) < 0.05;
+                    return (
+                      <tr key={st.id} className="border-t border-border">
+                        <td className="py-2 font-medium">{st.name}</td>
+                        <td className="py-2 text-right tabular">{formatNaira(st.pricingPerKwh)}/kWh</td>
+                        <td className="py-2 pl-4"><VarianceBadge stationRate={st.pricingPerKwh} globalRate={gRate} /></td>
+                        <td className="py-2 text-right">
+                          {matches ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : (
+                            <button onClick={() => resetToGlobal(st.id)} className="text-primary text-xs font-medium hover:underline">Reset</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
