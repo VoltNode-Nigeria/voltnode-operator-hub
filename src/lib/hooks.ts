@@ -84,3 +84,27 @@ export const useGlobalRate = () =>
     },
     staleTime: 5 * 60 * 1000,
   });
+
+export type OperatorSessionsResponse = {
+  data: Session[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
+};
+
+export const useOperatorSessions = (params: {
+  page?: number;
+  stationId?: string;
+  from?: string;
+  to?: string;
+}) =>
+  useQuery({
+    queryKey: ["sessions", "operator", params],
+    queryFn: async (): Promise<OperatorSessionsResponse> => {
+      const p = new URLSearchParams();
+      if (params.page) p.append("page", String(params.page));
+      if (params.stationId) p.append("stationId", params.stationId);
+      if (params.from) p.append("from", params.from);
+      if (params.to) p.append("to", params.to);
+      const { data } = await api.get(`/sessions/operator?${p}`);
+      return data;
+    },
+  });

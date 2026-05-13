@@ -41,9 +41,12 @@ export type Session = {
   endedAt?: string;
   kwh?: number;
   energyKwh?: number;
+  kwhDispensed?: number;
   amount?: number;
   cost?: number;
+  costNaira?: number;
   status?: string;
   paymentStatus?: string;
+  paymentMethod?: string;
   paystackRef?: string;
 };
