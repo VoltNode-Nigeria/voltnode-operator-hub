@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useOperatorSessions, useStations } from "@/lib/hooks";
 import { formatNaira, maskDriver } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@components/ui/input";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 
 function PaymentMethodBadge({ method }: { method?: string }) {
